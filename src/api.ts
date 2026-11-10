@@ -112,6 +112,10 @@ export const api = {
   lineMirrors: () => call<LineMirrors>("line_mirrors"),
   lineProbe: (urls: string[]) => call<LineProbe[]>("line_probe", { urls }),
 
+  /* 出网代理：跟随系统 / 直连 / 手动指定（Rust 侧 src-tauri/src/proxy.rs） */
+  proxyState: () => call<ProxyState>("proxy_state"),
+  proxySet: (mode: ProxyMode, url = "") => call<ProxyState>("proxy_set", { mode, url }),
+
   /* 更新检查：对比 GitHub Release 的 tag */
   checkUpdate: () => call<UpdateInfo>("check_update"),
   openUrl: (url: string) => call<void>("open_url", { url }),
@@ -202,6 +206,23 @@ export type UpdateInfo = {
 
 export type LineItem = { name?: string; url: string; host?: string };
 export type LineState = { base: string; default: string; fixed: LineItem[] };
+
+/* ── 出网代理 ───────────────────────────────────────────── */
+
+export type ProxyMode = "system" | "direct" | "manual";
+
+export type ProxyState = {
+  /** 用户选择的模式 */
+  mode: ProxyMode;
+  /** 手动模式的完整地址：只用于回填输入框，可能含账号密码，禁止写进日志或诊断 */
+  url: string;
+  /** 脱敏后的展示值：协议 + 主机 + 端口 */
+  display: string;
+  /** 环境变量 HGHUB_PROXY（已脱敏）。有值时「跟随系统」会实际走它 */
+  env: string | null;
+  /** 当前实际生效：system / direct / 脱敏地址 */
+  active: string;
+};
 export type LineMirrors = { source: string; script?: string; items: LineItem[] };
 export type LineProbe = { url: string; ok: boolean; status?: number; ms: number; error?: string };
 

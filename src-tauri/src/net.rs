@@ -111,20 +111,13 @@ pub fn set_base(url: &str) -> Result<String, String> {
 pub const UA: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
-/// 手动指定代理（排查 / 公司内网用）：`HGHUB_PROXY=http://127.0.0.1:7897`。
-/// 不设时交给 reqwest 的 `system-proxy` 探测（注册表 + 环境变量）。
-fn proxy_override() -> Option<String> {
-    std::env::var("HGHUB_PROXY")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-}
-
-/// 按**当前**系统代理设置新建一个客户端。
+/// 按**当前**代理设置新建一个客户端。
 ///
 /// 注意：reqwest 的 `system-proxy` 只在构建时读一次注册表 / 环境变量。代理软件被关掉后，
 /// 旧客户端仍会往 `127.0.0.1:7897` 建隧道，症状是满屏 `tunnel error: failed to create
 /// underlying connection`（浏览器却是通的，因为它每次都重读系统代理）。所以这里允许重建。
+///
+/// 具体走哪条路由 [`crate::proxy::effective`] 决定：跟随系统 / 直连 / 手动。
 fn build_client(host: &str, addrs: &[SocketAddr]) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder()
         .user_agent(UA)
@@ -138,10 +131,18 @@ fn build_client(host: &str, addrs: &[SocketAddr]) -> Result<reqwest::Client, Str
     if !addrs.is_empty() {
         builder = builder.resolve_to_addrs(host, addrs);
     }
-    if let Some(p) = proxy_override() {
-        // 错误信息不能含原始代理 URL（其中可能有用户名/密码）。
-        let proxy = reqwest::Proxy::all(&p).map_err(|_| "HGHUB_PROXY 配置无效（已隐藏原始值）")?;
-        builder = builder.proxy(proxy);
+    match crate::proxy::effective() {
+        // 交给 reqwest 自己探测系统代理
+        crate::proxy::Effective::Inherit => {}
+        crate::proxy::Effective::Direct => {
+            builder = builder.no_proxy();
+        }
+        crate::proxy::Effective::Url(raw) => {
+            // 错误信息不能含原始代理 URL（其中可能有用户名/密码）。
+            let proxy =
+                reqwest::Proxy::all(&raw).map_err(|_| "代理地址无法使用（原始值已隐藏）")?;
+            builder = builder.proxy(proxy);
+        }
     }
     builder
         .build()
@@ -166,14 +167,18 @@ async fn client_for(raw: &str) -> Result<(url::Url, Arc<reqwest::Client>), Strin
     let target = network_policy::parse_target_with_mode(raw, strict)?;
     let host = target.host_str().ok_or("目标缺少主机名")?;
     let port = target.port_or_known_default().ok_or("目标端口无效")?;
-    let key = format!("{strict}:{host}:{port}");
+    // 代理配置也是键的一部分：改完设置（手动/直连/系统）不会命中旧客户端
+    let key = format!("{strict}:{host}:{port}:{}", crate::proxy::cache_tag());
     {
         let cache = CLIENTS.lock().map_err(|_| "HTTP 客户端锁失败")?;
         if let Some(http) = cached_client(&cache, &key, Instant::now()) {
             return Ok((target, http));
         }
     }
-    let addrs = if strict {
+    // 走代理时目标地址由代理端解析：本地再解析一次既多余，又会在 DNS 被污染、
+    // 或域名只能由代理解析的环境里直接失败（等于代理白配了）。
+    // 此时连接的对端是代理，固定目标 IP 也没有意义。
+    let addrs = if strict && !crate::proxy::is_proxied() {
         network_policy::resolve_target(&target, strict).await?
     } else {
         Vec::new()
@@ -367,12 +372,14 @@ pub async fn diagnose() -> Value {
         "host": host,
         "dns": dns,
         "http": http,
+        // 代理只放脱敏摘要：诊断结果会被用户复制发出来，不能带账号密码
+        "proxy": crate::proxy::summary(),
         "env": {
             "HTTP_PROXY": std::env::var("HTTP_PROXY").ok().map(|p| redact_proxy(&p)),
             "HTTPS_PROXY": std::env::var("HTTPS_PROXY").ok().map(|p| redact_proxy(&p)),
             "ALL_PROXY": std::env::var("ALL_PROXY").ok().map(|p| redact_proxy(&p)),
             "NO_PROXY": std::env::var("NO_PROXY").ok().map(|_| "[已配置，列表已隐藏]"),
-            "HGHUB_PROXY": proxy_override().map(|p| redact_proxy(&p)),
+            "HGHUB_PROXY": crate::proxy::env_override().map(|p| redact_proxy(&p)),
         },
     })
 }

@@ -27,6 +27,7 @@ time = { version = "0.3", features = ["formatting"] }
 # 注意：system-proxy 必须显式列出。关掉 default-features 会连带丢掉它，
 # 客户端就完全不看 Windows 系统代理（注册表 ProxyEnable/ProxyServer）而直连，
 # 症状正是「浏览器能开官网、HGhub 打不开」。见 src/net.rs 顶部说明。
+# socks：设置里手动代理支持 socks5://（没有它 reqwest 只认 http/https 代理）。
 reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "system-proxy",
@@ -34,6 +35,7 @@ reqwest = { version = "0.12", default-features = false, features = [
   "brotli",
   "json",
   "charset",
+  "socks",
 ] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net"] }
 aes = "0.8"

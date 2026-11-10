@@ -54,6 +54,22 @@ pub async fn net_diag() -> Result<Value, String> {
     Ok(crate::net::diagnose().await)
 }
 
+/* ───────────────────────── 出网代理 ───────────────────────── */
+
+/// 当前代理配置。`url` 为完整值，只给设置页回填输入框用；
+/// 诊断与日志一律走 `proxy::summary()`（不含原文）。
+#[tauri::command]
+pub async fn proxy_state() -> Result<Value, String> {
+    Ok(crate::proxy::state())
+}
+
+/// 切换出网代理：`system` 跟随系统 / `direct` 直连 / `manual` 手动指定。
+/// 立即生效并落盘，下次启动沿用。
+#[tauri::command]
+pub async fn proxy_set(mode: String, url: Option<String>) -> Result<Value, String> {
+    crate::proxy::set(&mode, url.as_deref())
+}
+
 /* ───────────────────────── 线路（数据源） ───────────────────────── */
 
 /// 当前线路 + 固定线路清单（镜像线路另外按需拉取）。

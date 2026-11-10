@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { api, APP_VERSION, hostOf, logLine, platform, type UpdateInfo } from "../api";
+import { api, APP_VERSION, hostOf, logLine, platform, type ProxyState, type UpdateInfo } from "../api";
 import { useStore } from "../store";
 import { Modal, Toggle } from "../components/ui";
 import LinePicker from "../components/LinePicker";
+import ProxyPicker from "../components/ProxyPicker";
 import { copyPlaybackLog, initPlaybackLog, setPlaybackLog, usePlaybackLog } from "../playbackDiagnostics";
-import { IBack, IBoltF, IBroom, IChevR, IHeart, IInfo, ILink, ILockF, IMoon, IRefresh, ISettings, ISun, IVolMute } from "../icons";
+import { IBack, IBoltF, IBroom, IChevR, ICompass, IHeart, IInfo, ILink, ILockF, IMoon, IRefresh, ISettings, ISun, IVolMute } from "../icons";
 
 /* 独立设置页：线路 / 外观 / 播放 / 本地数据 / 清理缓存 / 网络诊断 / 关于
    入口：Windows 侧栏「设置」、Android「我的」右上角齿轮 */
@@ -14,6 +15,8 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [lineOpen, setLineOpen] = useState(false);
+  const [proxyOpen, setProxyOpen] = useState(false);
+  const [proxy, setProxy] = useState<ProxyState | null>(null);
   const [lineBase, setLineBase] = useState("");
   const [checking, setChecking] = useState(false);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
@@ -23,7 +26,11 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
   const readLine = () => {
     api.lineState().then((s) => setLineBase(s.base)).catch(() => {});
   };
+  const readProxy = () => {
+    api.proxyState().then(setProxy).catch(() => {});
+  };
   useEffect(readLine, []);
+  useEffect(readProxy, []);
   useEffect(() => { void initPlaybackLog(); }, []);
 
   const checkUpdate = async () => {
@@ -112,6 +119,24 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
               <div className="flex-1 min-w-0">
                 <div className="text-[12.5px] text-on">线路</div>
                 <div className="text-[10.5px] text-mut truncate">{lineBase ? hostOf(lineBase) : "固定线路 1（默认）"}</div>
+              </div>
+              <IChevR size={15} className="text-mut" />
+            </button>
+            <button onClick={() => setProxyOpen(true)} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable">
+              <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><ICompass size={16} /></span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12.5px] text-on">网络代理</div>
+                <div className="text-[10.5px] text-mut truncate">
+                  {!proxy
+                    ? "读取中…"
+                    : proxy.mode === "manual"
+                      ? `手动指定 · ${proxy.display}`
+                      : proxy.mode === "direct"
+                        ? "直连（不使用代理）"
+                        : proxy.env
+                          ? `跟随系统 · 但 HGHUB_PROXY=${proxy.env} 生效`
+                          : "跟随系统代理"}
+                </div>
               </div>
               <IChevR size={15} className="text-mut" />
             </button>
@@ -206,6 +231,7 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
       </div>
 
       <LinePicker open={lineOpen} onClose={() => { setLineOpen(false); readLine(); }} />
+      <ProxyPicker open={proxyOpen} onClose={() => { setProxyOpen(false); readProxy(); }} />
 
       <Modal open={about} onClose={() => setAbout(false)} width={392}>
         <div className="p-5">

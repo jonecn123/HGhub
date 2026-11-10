@@ -8,6 +8,7 @@ mod media;
 mod net;
 mod network_policy;
 mod playback_log;
+mod proxy;
 mod session;
 
 use api::Api;
@@ -58,6 +59,8 @@ pub fn run() {
                 let _ = std::fs::create_dir_all(&dir);
                 // 上次选择的线路（设置 → 线路）在启动时恢复
                 net::bind_base(&dir);
+                // 上次选择的代理（设置 → 代理）在启动时恢复
+                proxy::bind(&dir);
                 playback_log::bind(&dir);
                 let state: tauri::State<Api> = app.state();
                 state.session.bind(dir);
@@ -140,6 +143,8 @@ pub fn run() {
             api::security_set,
             api::debug_log,
             api::net_diag,
+            api::proxy_state,
+            api::proxy_set,
             api::line_state,
             api::line_set,
             api::line_mirrors,
