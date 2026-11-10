@@ -4,28 +4,38 @@ import { handleArticleClick, sanitizeHtml } from "../html";
 import type { Comment, CommentPage, Episode } from "../types";
 import { useStore } from "../store";
 import { Avatar, Empty } from "./ui";
-import { IClose, IHeart, ISendF } from "../icons";
+import { IClose, IDownload, IHeart, ISendF } from "../icons";
 
 /* ================= 选集 ================= */
-export function EpisodesPanel({ videoId, episodes, current, onPick, onClose, bare = false }: {
+export function EpisodesPanel({ videoId, episodes, current, onPick, onClose, bare = false, onDownload }: {
   videoId: number; episodes: Episode[]; current: number; onPick: (ep: number) => void; onClose: () => void;
   /** 嵌在双栏抽屉里时，隐藏自带的标题栏与底注 */
   bare?: boolean;
+  /** 批量下载入口；移动端不传（没有可写的公共目录） */
+  onDownload?: () => void;
 }) {
   const [asc, setAsc] = useState(true);
   const list = asc ? episodes : [...episodes].reverse();
+  const downloadBtn = onDownload ? (
+    <button onClick={onDownload} aria-label="批量下载" title="批量下载本剧"
+      className="w-7 h-7 rounded-full bg-s3 flex items-center justify-center text-primary pressable">
+      <IDownload size={13} />
+    </button>
+  ) : null;
   return (
     <div className="flex flex-col h-full">
       {bare ? (
         <div className="shrink-0 flex items-center gap-2 px-4 pb-2">
           <span className="text-[10.5px] text-mut">共 {episodes.length} 集</span>
           <button onClick={() => setAsc((v) => !v)} className="ml-auto text-[11px] text-primary pressable">{asc ? "倒序" : "正序"}</button>
+          {downloadBtn}
         </div>
       ) : (
         <div className="shrink-0 flex items-center gap-2 px-4 h-12">
           <span className="text-[13.5px] font-bold text-on">选集</span>
           <span className="text-[10.5px] text-mut">共 {episodes.length} 集</span>
           <button onClick={() => setAsc((v) => !v)} className="ml-auto text-[11px] text-primary pressable">{asc ? "倒序" : "正序"}</button>
+          {downloadBtn}
           <button onClick={onClose} aria-label="关闭" className="w-7 h-7 rounded-full bg-s3 flex items-center justify-center text-mut pressable">
             <IClose size={13} />
           </button>

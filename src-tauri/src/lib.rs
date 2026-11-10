@@ -1,4 +1,5 @@
 mod api;
+mod download;
 mod lines;
 mod logging;
 #[cfg(target_os = "macos")]
@@ -162,6 +163,11 @@ pub fn run() {
             api::api_post_comments,
             api::api_video,
             api::api_play,
+            download::episode_download,
+            download::download_cancel,
+            download::download_ffmpeg,
+            download::download_default_dir,
+            download::download_reveal,
             api::api_comments,
             api::api_comment_send,
             api::api_like,

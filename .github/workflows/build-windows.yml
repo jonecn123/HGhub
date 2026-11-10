@@ -1,0 +1,116 @@
+name: Build Windows
+
+# 只打 Windows 桌面端，手动触发，不占用 macOS / Android / Linux 的构建额度。
+# 产物：
+#   HGhub_<版本>_x64_setup.exe      NSIS 安装包（开始菜单、卸载项齐全）
+#   HGhub_<版本>_x64_portable.zip   绿色版，解压双击即用，无需安装
+#   SHA256SUMS.txt                  校验和
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 读取版本号
+        id: ver
+        shell: bash
+        run: |
+          V="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "构建版本：$V"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # windows-latest 自带 Rust，这里显式固定 stable，避免 runner 镜像变更导致行为漂移
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # release profile 开了 lto + codegen-units=1，首次冷编译约 20 分钟，有缓存后快很多
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: windows-x64
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      # beforeBuildCommand 会依次跑 pnpm build（tsc + vite）和图标同步脚本
+      - name: 编译并打包 NSIS 安装包
+        run: pnpm tauri build --bundles nsis
+
+      - name: 整理产物
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $v = "${{ steps.ver.outputs.version }}"
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+
+          # 1) NSIS 安装包
+          $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" -File -ErrorAction SilentlyContinue |
+                   Select-Object -First 1
+          if (-not $setup) { throw "未找到 NSIS 安装包，检查 bundle.targets 是否包含 nsis" }
+          Copy-Item $setup.FullName "artifacts/HGhub_${v}_x64_setup.exe"
+          Write-Host "安装包：$($setup.Name) $([math]::Round($setup.Length/1MB,1)) MB"
+
+          # 2) 绿色版主程序：target/release 根目录下的主 exe（排除安装器与卸载器）
+          $bin = Get-ChildItem "src-tauri/target/release" -Filter *.exe -File |
+                 Where-Object { $_.Name -notlike "*setup*" -and $_.Name -notlike "uninst*" -and $_.Name -notlike "*.tmp" } |
+                 Sort-Object Length -Descending |
+                 Select-Object -First 1
+          if (-not $bin) { throw "未找到主程序 exe" }
+          Write-Host "主程序：$($bin.Name) $([math]::Round($bin.Length/1MB,1)) MB"
+          Copy-Item $bin.FullName "artifacts/HGhub.exe"
+          Compress-Archive -Path "artifacts/HGhub.exe" -DestinationPath "artifacts/HGhub_${v}_x64_portable.zip" -Force
+          Remove-Item "artifacts/HGhub.exe"
+
+          # 3) 校验和
+          Get-ChildItem artifacts -File | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$h  $($_.Name)" | Out-File -Append -Encoding utf8 "artifacts/SHA256SUMS.txt"
+          }
+
+          Get-ChildItem artifacts -File | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}} | Format-Table
+
+      - name: 写入任务摘要
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### HGhub Windows 构建"
+            echo ""
+            echo "版本 \`${{ steps.ver.outputs.version }}\`"
+            echo ""
+            echo '- `HGhub_*_x64_setup.exe`：安装版'
+            echo '- `HGhub_*_x64_portable.zip`：绿色版，解压即用'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HGhub-windows-x64
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30

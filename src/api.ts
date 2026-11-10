@@ -115,6 +115,74 @@ export const api = {
   /* 更新检查：对比 GitHub Release 的 tag */
   checkUpdate: () => call<UpdateInfo>("check_update"),
   openUrl: (url: string) => call<void>("open_url", { url }),
+
+  /* 剧集批量下载（Rust 侧 src-tauri/src/download.rs） */
+  downloadEpisodes: (req: DownloadRequest) => call<DownloadSummary>("episode_download", { req }),
+  downloadCancel: () => call<boolean>("download_cancel"),
+  downloadFfmpeg: () => call<FfmpegInfo>("download_ffmpeg"),
+  downloadDefaultDir: () => call<string>("download_default_dir"),
+  downloadReveal: (path: string) => call<void>("download_reveal", { path }),
+};
+
+/* ── 批量下载 ───────────────────────────────────────────── */
+
+/** Rust 侧 `download::EVENT`，两边必须一致 */
+export const DOWNLOAD_EVENT = "hg-download";
+
+export type DownloadNaming = "e_title" | "ep_only" | "season_episode";
+export type DownloadQuality = "main" | "hevc";
+export type DownloadRemux = "auto" | "off" | "require";
+
+export type DownloadRequest = {
+  id: number;
+  title: string;
+  eps: number[];
+  dir: string;
+  quality: DownloadQuality;
+  naming: DownloadNaming;
+  remux: DownloadRemux;
+  concurrency: number;
+  overwrite: boolean;
+};
+
+export type DownloadPhase =
+  | "start" | "ep_start" | "progress" | "ep_done" | "ep_skip" | "ep_error" | "done" | "cancelled";
+
+export type DownloadProgress = {
+  phase: DownloadPhase;
+  ep: number;
+  ep_title: string | null;
+  done_eps: number;
+  total_eps: number;
+  seg_done: number | null;
+  seg_total: number | null;
+  bytes: number | null;
+  file: string | null;
+  message: string | null;
+};
+
+export type DownloadFile = { ep: number; path: string; bytes: number; container: string; note: string | null };
+
+export type DownloadSummary = {
+  ok: number;
+  skipped: number;
+  failed: number;
+  cancelled: boolean;
+  dir: string;
+  files: DownloadFile[];
+  errors: string[];
+};
+
+export type FfmpegInfo = { available: boolean; path: string | null };
+
+/** 字节数的紧凑展示：1.2 MB / 640 KB */
+export const fmtBytes = (n?: number | null) => {
+  const v = Number(n) || 0;
+  if (v <= 0) return "—";
+  if (v >= 1024 ** 3) return `${(v / 1024 ** 3).toFixed(2)} GB`;
+  if (v >= 1024 ** 2) return `${(v / 1024 ** 2).toFixed(1)} MB`;
+  if (v >= 1024) return `${Math.round(v / 1024)} KB`;
+  return `${v} B`;
 };
 
 /* ── 更新检查 ───────────────────────────────────────────── */

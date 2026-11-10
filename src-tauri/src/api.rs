@@ -496,8 +496,10 @@ fn has_play_url(info: &Value) -> bool {
         .is_some_and(|s| !s.is_empty())
 }
 
-#[tauri::command]
-pub async fn api_play(state: State<'_, Api>, id: i64, ep: u32) -> Result<Value, String> {
+/// 取某一集的播放信息（`video_url` / `video_url_hevc` 已回填）。
+///
+/// 播放与批量下载共用这一份逻辑：接口回落顺序、字段归一都只在这里维护一次。
+pub(crate) async fn play_info(state: &Api, id: i64, ep: u32) -> Result<Value, String> {
     // 优先走新接口；失败或没有可用地址时再退回旧接口，两者都不行就返回新接口的结果/错误。
     let primary = state
         .post(&format!("/api/videos/{id}/episodes/{ep}/playback"), Some(json!({})))
@@ -525,6 +527,11 @@ pub async fn api_play(state: State<'_, Api>, id: i64, ep: u32) -> Result<Value, 
         }
         Err(_) => primary,
     }
+}
+
+#[tauri::command]
+pub async fn api_play(state: State<'_, Api>, id: i64, ep: u32) -> Result<Value, String> {
+    play_info(state.inner(), id, ep).await
 }
 
 /* ───────────────────────── 评论 / 互动 ───────────────────────── */

@@ -8,6 +8,7 @@ import VideoSurface, { type VideoHandle } from "./VideoSurface";
 import PlayerControls from "./PlayerControls";
 import PlaybackLock from "./PlaybackLock";
 import { ArticlePanel, CommentsPanel, EpisodesPanel } from "./Panels";
+import { DownloadSheet } from "./DownloadSheet";
 import { setBackHandler } from "../back";
 import {
   IBack, IBoltF, IChevR, IChevronDown, IChevronUp, IClose, ICommentF, ICompress, IExpand, IFileText, IHeart, IHeartF,
@@ -56,6 +57,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const [playTry, setPlayTry] = useState(0);
   const [panel, setPanel] = useState<"episodes" | "comments" | "article" | "detail" | null>(null);
   const [descOpen, setDescOpen] = useState(false);
+  /* 批量下载弹层：只在桌面端提供（移动端没有可写的公共目录） */
+  const [downOpen, setDownOpen] = useState(false);
   /* 续播：拿到时长后再 seek 一次（只对进入时那一条生效） */
   const resumeRef = useRef<{ key: string; t: number } | null>(
     startTime && startTime > 1 ? { key: `${videoIds[startIndex]}:${startEp || 1}`, t: startTime } : null,
@@ -1220,7 +1223,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         <div className={`desktop-dock-panel ${panel ? "is-open" : ""}`}>
           <div className="desktop-dock-inner">
             {panel === "episodes" ? (
-              <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} />
+              <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)}
+                onDownload={() => setDownOpen(true)} />
             ) : panel === "comments" ? (
               <CommentsPanel videoId={curId} ep={curEp} total={meta.comment} kind={kind} onClose={() => setPanel(null)} />
             ) : null}
@@ -1311,6 +1315,14 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         </>
       )}
       </div>
+      {/* 批量下载：挂在根容器上，才能盖住右侧停靠面板 */}
+      <DownloadSheet
+        open={downOpen}
+        onClose={() => setDownOpen(false)}
+        videoId={curId}
+        title={meta.title}
+        episodes={episodes}
+      />
       {!isDesktop && !fs && !clean && !controlsLocked && active && (
         <div className="absolute right-3 z-40 flex items-center gap-2" style={{ top: "calc(var(--sat, 0px) + 6px)" }}>
           <button onClick={() => setMuted(m => !m)} aria-label={muted ? "取消静音" : "静音"}
